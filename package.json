@@ -1,0 +1,5 @@
+{
+	"name": "library-freertos",
+	"version": "10.0.1",
+	"description": "Real-time operating system for microcontrollers"
+}
