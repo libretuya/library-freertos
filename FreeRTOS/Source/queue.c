@@ -835,7 +835,11 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				}
 				#endif /* configUSE_QUEUE_SETS */
 
+				#ifdef FREERTOS_PORT_BEKEN_BDK
+				taskEXIT_CRITICAL_EARLY();
+				#else
 				taskEXIT_CRITICAL();
+				#endif
 				return pdPASS;
 			}
 			else
@@ -844,7 +848,11 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				{
 					/* The queue was full and no block time is specified (or
 					the block time has expired) so leave now. */
+					#ifdef FREERTOS_PORT_BEKEN_BDK
+					taskEXIT_CRITICAL_EARLY();
+					#else
 					taskEXIT_CRITICAL();
+					#endif
 
 					/* Return to the original privilege level before exiting
 					the function. */
@@ -915,6 +923,9 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 			return errQUEUE_FULL;
 		}
 	}
+	#ifdef FREERTOS_PORT_BEKEN_BDK
+	return 0;
+	#endif
 }
 /*-----------------------------------------------------------*/
 
@@ -1335,7 +1346,11 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 					}
 				}
 
+				#ifdef FREERTOS_PORT_BEKEN_BDK
+				taskEXIT_CRITICAL_EARLY();
+				#else
 				taskEXIT_CRITICAL();
+				#endif
 				return pdPASS;
 			}
 			else
@@ -1344,7 +1359,11 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 				{
 					/* The queue was empty and no block time is specified (or
 					the block time has expired) so leave now. */
+					#ifdef FREERTOS_PORT_BEKEN_BDK
+					taskEXIT_CRITICAL_EARLY();
+					#else
 					taskEXIT_CRITICAL();
+					#endif
 					traceQUEUE_RECEIVE_FAILED( pxQueue );
 					return errQUEUE_EMPTY;
 				}
@@ -1428,6 +1447,9 @@ Queue_t * const pxQueue = ( Queue_t * ) xQueue;
 			}
 		}
 	}
+	#ifdef FREERTOS_PORT_BEKEN_BDK
+	return 0;
+	#endif
 }
 /*-----------------------------------------------------------*/
 

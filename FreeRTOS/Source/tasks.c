@@ -2760,6 +2760,16 @@ BaseType_t xSwitchRequired = pdFALSE;
 
 void vTaskSwitchContext( void )
 {
+	#ifdef FREERTOS_PORT_BEKEN_BDK
+	GLOBAL_INT_DECLARATION();
+	GLOBAL_INT_DISABLE();
+	if(preempt_delayed_schedule_handler())
+	{
+		GLOBAL_INT_RESTORE();
+		return;
+	}
+	#endif
+
 	if( uxSchedulerSuspended != ( UBaseType_t ) pdFALSE )
 	{
 		/* The scheduler is currently suspended - do not allow a context
@@ -2814,6 +2824,9 @@ void vTaskSwitchContext( void )
 		}
 		#endif /* configUSE_NEWLIB_REENTRANT */
 	}
+	#ifdef FREERTOS_PORT_BEKEN_BDK
+	GLOBAL_INT_RESTORE();
+	#endif
 }
 /*-----------------------------------------------------------*/
 
@@ -4805,3 +4818,44 @@ const TickType_t xConstTickCount = xTickCount;
 	#include "tasks_test_access_functions.h"
 #endif
 
+#ifdef FREERTOS_PORT_BEKEN_BDK
+BaseType_t xTaskIsTaskFinished( xTaskHandle xTask )
+{
+	int i;
+    const TCB_t * const pxTCB = ( tskTCB * ) xTask;
+
+    /* It does not make sense to check if the calling task is suspended. */
+    configASSERT( xTask );
+
+    /* Is the task we are attempting to resume actually in the
+    suspended list? */
+    if ( pxCurrentTCB == pxTCB )
+    {
+        return pdFALSE;
+    }
+
+    taskENTER_CRITICAL();
+
+    if ( ( listIS_CONTAINED_WITHIN( &xSuspendedTaskList, &( pxTCB->xStateListItem ) ) != pdFALSE ) ||
+         ( listIS_CONTAINED_WITHIN( &xDelayedTaskList1, &( pxTCB->xStateListItem ) ) != pdFALSE ) ||
+         ( listIS_CONTAINED_WITHIN( &xDelayedTaskList2, &( pxTCB->xStateListItem ) ) != pdFALSE ) ||
+         ( listIS_CONTAINED_WITHIN( &xPendingReadyList, &( pxTCB->xStateListItem ) ) != pdFALSE ) )
+    {
+        taskEXIT_CRITICAL_EARLY();
+        return pdFALSE;
+    }
+
+    for ( i = 0; i < configMAX_PRIORITIES; i++ )
+    {
+        if ( listIS_CONTAINED_WITHIN( &pxReadyTasksLists[ i ], &( pxTCB->xStateListItem ) ) != pdFALSE )
+        {
+            taskEXIT_CRITICAL_EARLY();
+            return pdFALSE;
+        }
+    }
+
+    taskEXIT_CRITICAL();
+
+    return pdTRUE;
+}
+#endif
