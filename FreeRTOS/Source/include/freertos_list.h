@@ -92,8 +92,8 @@
  */
 
 
-#ifndef LIST_H
-#define LIST_H
+#ifndef FREERTOS_LIST_H
+#define FREERTOS_LIST_H
 
 /*
  * The list structure members are modified from within interrupts, and therefore
