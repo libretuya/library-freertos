@@ -308,11 +308,24 @@ Timer_t *pxNewTimer;
 	return ( TimerHandle_t ) pxNewTimer;
 }
 /*-----------------------------------------------------------*/
+#ifdef FREERTOS_PORT_REALTEK_AMB1
+extern void * vTaskGetCurrentTCB( void );
+static void	prvProcessCommands( TimerHandle_t xTimer, const BaseType_t xCommandID, const TickType_t xOptionalValue );
+#endif
 
 BaseType_t xTimerGenericCommand( TimerHandle_t xTimer, const BaseType_t xCommandID, const TickType_t xOptionalValue, BaseType_t * const pxHigherPriorityTaskWoken, const TickType_t xTicksToWait )
 {
 BaseType_t xReturn = pdFAIL;
 DaemonTaskMessage_t xMessage;
+
+	#ifdef FREERTOS_PORT_REALTEK_AMB1
+	// Added by Realtek to prevent timer thread blocked
+	if( ( vTaskGetCurrentTCB() == ( void * ) xTimerTaskHandle ) && ( ( xCommandID == tmrCOMMAND_STOP ) || ( xCommandID == tmrCOMMAND_CHANGE_PERIOD ) ) )
+	{
+		prvProcessCommands( xTimer, xCommandID, xOptionalValue );
+		return pdPASS;
+	}
+	#endif
 
 	/* Send a message to the timer service task to perform a particular action
 	on a particular timer definition. */
@@ -702,6 +715,44 @@ TickType_t xTimeNow;
 		}
 	}
 }
+
+#ifdef FREERTOS_PORT_REALTEK_AMB1
+// Added by Realtek to prevent timer thread blocked
+static void	prvProcessCommands( TimerHandle_t xTimer, const BaseType_t xCommandID, const TickType_t xOptionalValue )
+{
+Timer_t *pxTimer = ( Timer_t * ) xTimer;
+TickType_t xTimeNow = xTaskGetTickCount();;
+
+	if( listIS_CONTAINED_WITHIN( NULL, &( pxTimer->xTimerListItem ) ) == pdFALSE )
+	{
+		/* The timer is in a list, remove it. */
+		( void ) uxListRemove( &( pxTimer->xTimerListItem ) );
+	}
+
+	switch( xCommandID )
+	{
+		case tmrCOMMAND_STOP :
+			/* The timer has already been removed from the active list.
+			There is nothing to do here. */
+			break;
+
+		case tmrCOMMAND_CHANGE_PERIOD :
+			pxTimer->xTimerPeriodInTicks = xOptionalValue;
+			( void ) prvInsertTimerInActiveList( pxTimer, ( xTimeNow + pxTimer->xTimerPeriodInTicks ), xTimeNow, xTimeNow );
+			break;
+
+		case tmrCOMMAND_DELETE :
+			/* The timer has already been removed from the active list,
+			just free up the memory. */
+			vPortFree( pxTimer );
+			break;
+
+		default	:
+			/* Don't expect to get here. */
+			break;
+	}
+}
+#endif
 /*-----------------------------------------------------------*/
 
 static void prvSwitchTimerLists( void )

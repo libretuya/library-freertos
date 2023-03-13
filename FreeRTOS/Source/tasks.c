@@ -104,6 +104,20 @@ privileged Vs unprivileged linkage and placement. */
  */
 #define tskIDLE_STACK_SIZE	configMINIMAL_STACK_SIZE
 
+#ifdef FREERTOS_PORT_REALTEK_AMB1
+#define RTL_PLACE_IDLE_STACK_IN_SRAM
+#ifdef RTL_PLACE_IDLE_STACK_IN_SRAM
+/* 20151104 User may place heap in SDRAM and cause tickless hang because SDRAM is susupend and idle stack is in SDRAM.
+* Fix it by place idle stack in SRAM.
+*/
+#if ((defined CONFIG_PLATFORM_8195A) || (defined CONFIG_PLATFORM_8711B))
+	#include "section_config.h"
+	SRAM_BF_DATA_SECTION
+#endif
+	static unsigned char ucIdleTaskHeap[ tskIDLE_STACK_SIZE * sizeof( StackType_t ) ];
+#endif
+#endif
+
 #if( configUSE_PREEMPTION == 0 )
 	/* If the cooperative scheduler is being used then a yield should not be
 	performed just because a higher priority task has been woken. */
@@ -1459,14 +1473,24 @@ BaseType_t xReturn;
 	/* Add the idle task at the lowest priority. */
 	#if ( INCLUDE_xTaskGetIdleTaskHandle == 1 )
 	{
+#ifdef RTL_PLACE_IDLE_STACK_IN_SRAM
+		// it's same function call as original FreeRTOS source except that it use stack in SRAM
+		xReturn = xTaskGenericCreate( prvIdleTask, "IDLE", tskIDLE_STACK_SIZE, ( void * ) NULL, ( tskIDLE_PRIORITY | portPRIVILEGE_BIT ), &xIdleTaskHandle, (void *)&ucIdleTaskHeap, NULL);
+#else
 		/* Create the idle task, storing its handle in xIdleTaskHandle so it can
 		be returned by the xTaskGetIdleTaskHandle() function. */
 		xReturn = xTaskCreate( prvIdleTask, "IDLE", tskIDLE_STACK_SIZE, ( void * ) NULL, ( tskIDLE_PRIORITY | portPRIVILEGE_BIT ), &xIdleTaskHandle ); /*lint !e961 MISRA exception, justified as it is not a redundant explicit cast to all supported compilers. */
+#endif
 	}
 	#else
 	{
+#ifdef RTL_PLACE_IDLE_STACK_IN_SRAM
+		// it's same function call as original FreeRTOS source except that it use stack in SRAM
+		xReturn = xTaskGenericCreate( prvIdleTask, "IDLE", tskIDLE_STACK_SIZE, ( void * ) NULL, ( tskIDLE_PRIORITY | portPRIVILEGE_BIT ), NULL, (void *)&ucIdleTaskHeap, NULL );
+#else
 		/* Create the idle task without storing its handle. */
 		xReturn = xTaskCreate( prvIdleTask, "IDLE", tskIDLE_STACK_SIZE, ( void * ) NULL, ( tskIDLE_PRIORITY | portPRIVILEGE_BIT ), NULL );  /*lint !e961 MISRA exception, justified as it is not a redundant explicit cast to all supported compilers. */
+#endif
 	}
 	#endif /* INCLUDE_xTaskGetIdleTaskHandle */
 
@@ -3604,6 +3628,12 @@ TickType_t uxReturn;
 #endif /* configUSE_MUTEXES */
 
 /*-----------------------------------------------------------*/
+#ifdef FREERTOS_PORT_REALTEK_AMB1
+void * vTaskGetCurrentTCB( void )
+{
+	return (void*)pxCurrentTCB;
+}
+#endif
 
 #ifdef FREERTOS_MODULE_TEST
 	#include "tasks_test_access_functions.h"
