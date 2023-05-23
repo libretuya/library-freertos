@@ -254,12 +254,22 @@ BaseType_t xReturn = pdFAIL;
 		}
 		#else
 		{
+			#if !(defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE))
 			xReturn = xTaskCreate(	prvTimerTask,
 									configTIMER_SERVICE_TASK_NAME,
 									configTIMER_TASK_STACK_DEPTH,
 									NULL,
 									( ( UBaseType_t ) configTIMER_TASK_PRIORITY ) | portPRIVILEGE_BIT,
 									&xTimerTaskHandle );
+			#else
+			xReturn = xSecureTaskCreate(	prvTimerTask,
+											"Tmr Svc",
+											configTIMER_TASK_STACK_DEPTH,	// for non-secure
+											configTIMER_TASK_STACK_DEPTH,	// for secure
+											NULL,
+											( ( UBaseType_t ) configTIMER_TASK_PRIORITY ) | portPRIVILEGE_BIT,
+											&xTimerTaskHandle );			
+			#endif
 		}
 		#endif /* configSUPPORT_STATIC_ALLOCATION */
 	}
@@ -302,6 +312,15 @@ BaseType_t xReturn = pdFAIL;
 		return pxNewTimer;
 	}
 
+#if defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE)
+	TimerHandle_t xTimerCreateFromSecure(	const TickType_t xTimerPeriodInTicks,
+											const UBaseType_t uxAutoReload,
+											void * const pvTimerID,
+											TimerCallbackFunction_t pxCallbackFunction )
+	{
+		return xTimerCreate("_sectime", xTimerPeriodInTicks, uxAutoReload, pvTimerID, pxCallbackFunction);
+	}
+#endif
 #endif /* configSUPPORT_STATIC_ALLOCATION */
 /*-----------------------------------------------------------*/
 
@@ -377,6 +396,9 @@ static void prvInitialiseNewTimer(	const char * const pcTimerName,			/*lint !e97
 	}
 }
 /*-----------------------------------------------------------*/
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+static void	prvProcessCommands( TimerHandle_t xTimer, const BaseType_t xCommandID, const TickType_t xOptionalValue );
+#endif
 
 BaseType_t xTimerGenericCommand( TimerHandle_t xTimer, const BaseType_t xCommandID, const TickType_t xOptionalValue, BaseType_t * const pxHigherPriorityTaskWoken, const TickType_t xTicksToWait )
 {
@@ -384,6 +406,15 @@ BaseType_t xReturn = pdFAIL;
 DaemonTaskMessage_t xMessage;
 
 	configASSERT( xTimer );
+
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+	// Added by Realtek to prevent timer thread blocked
+	if( ( xTaskGetCurrentTaskHandle() == ( void * ) xTimerTaskHandle ) && ( ( xCommandID == tmrCOMMAND_STOP ) || ( xCommandID == tmrCOMMAND_CHANGE_PERIOD ) || ( xCommandID == tmrCOMMAND_DELETE ) ) )
+	{
+		prvProcessCommands( xTimer, xCommandID, xOptionalValue );
+		return pdPASS;
+	}
+#endif
 
 	/* Send a message to the timer service task to perform a particular action
 	on a particular timer definition. */
@@ -419,6 +450,20 @@ DaemonTaskMessage_t xMessage;
 
 	return xReturn;
 }
+/*-----------------------------------------------------------*/
+
+#if defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE)
+BaseType_t xTimerGenericCommandFromSecure( uint32_t * params )
+{
+	//params from NS heap, allocated by secure domain
+	//params[0] TimerHandle_t xTimer,
+	//params[1] const BaseType_t xCommandID,
+	//params[2] const TickType_t xOptionalValue,
+	//params[3] BaseType_t * const pxHigherPriorityTaskWoken,
+	//params[4] const TickType_t xTicksToWait
+	return xTimerGenericCommand((TimerHandle_t)params[0], (BaseType_t)params[1], (TickType_t)params[2], (BaseType_t *)params[3], (TickType_t)params[4]);
+}
+#endif
 /*-----------------------------------------------------------*/
 
 TaskHandle_t xTimerGetTimerDaemonTaskHandle( void )
@@ -830,6 +875,65 @@ TickType_t xTimeNow;
 		}
 	}
 }
+
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+// Added by Realtek to prevent timer thread blocked
+static void	prvProcessCommands( TimerHandle_t xTimer, const BaseType_t xCommandID, const TickType_t xOptionalValue )
+{
+Timer_t *pxTimer = ( Timer_t * ) xTimer;
+TickType_t xTimeNow = xTaskGetTickCount();;
+
+	if( listIS_CONTAINED_WITHIN( NULL, &( pxTimer->xTimerListItem ) ) == pdFALSE )
+	{
+		/* The timer is in a list, remove it. */
+		( void ) uxListRemove( &( pxTimer->xTimerListItem ) );
+	}
+
+	switch( xCommandID )
+	{
+		case tmrCOMMAND_STOP :
+			/* The timer has already been removed from the active list.
+			There is nothing to do here. */
+			break;
+
+		case tmrCOMMAND_CHANGE_PERIOD :
+			pxTimer->xTimerPeriodInTicks = xOptionalValue;
+			( void ) prvInsertTimerInActiveList( pxTimer, ( xTimeNow + pxTimer->xTimerPeriodInTicks ), xTimeNow, xTimeNow );
+			break;
+
+		case tmrCOMMAND_DELETE :
+			/* The timer has already been removed from the active list,
+			just free up the memory if the memory was dynamically
+			allocated. */
+			#if( ( configSUPPORT_DYNAMIC_ALLOCATION == 1 ) && ( configSUPPORT_STATIC_ALLOCATION == 0 ) )
+			{
+				/* The timer can only have been allocated dynamically -
+				free it again. */
+				vPortFree( pxTimer );
+			}
+			#elif( ( configSUPPORT_DYNAMIC_ALLOCATION == 1 ) && ( configSUPPORT_STATIC_ALLOCATION == 1 ) )
+			{
+				/* The timer could have been allocated statically or
+				dynamically, so check before attempting to free the
+				memory. */
+				if( pxTimer->ucStaticallyAllocated == ( uint8_t ) pdFALSE )
+				{
+					vPortFree( pxTimer );
+				}
+				else
+				{
+					mtCOVERAGE_TEST_MARKER();
+				}
+			}
+			#endif /* configSUPPORT_DYNAMIC_ALLOCATION */
+			break;
+
+		default	:
+			/* Don't expect to get here. */
+			break;
+	}
+}
+#endif
 /*-----------------------------------------------------------*/
 
 static void prvSwitchTimerLists( void )

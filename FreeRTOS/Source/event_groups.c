@@ -443,6 +443,19 @@ BaseType_t xTimeoutOccurred = pdFALSE;
 }
 /*-----------------------------------------------------------*/
 
+#if defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE)
+EventBits_t xEventGroupWaitBitsFromSecure( uint32_t * params )
+{
+	//EventGroupHandle_t xEventGroup,
+	//const EventBits_t uxBitsToWaitFor,
+	//const BaseType_t xClearOnExit,
+	//const BaseType_t xWaitForAllBits,
+	//TickType_t xTicksToWait
+	return xEventGroupWaitBits((EventGroupHandle_t)params[0], (EventBits_t)params[1], (BaseType_t)params[2], (BaseType_t)params[3], (TickType_t)params[4]);
+}
+#endif
+/*-----------------------------------------------------------*/
+
 EventBits_t xEventGroupClearBits( EventGroupHandle_t xEventGroup, const EventBits_t uxBitsToClear )
 {
 EventGroup_t *pxEventBits = ( EventGroup_t * ) xEventGroup;

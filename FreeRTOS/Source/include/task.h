@@ -324,6 +324,18 @@ is used in assert() statements. */
 							void * const pvParameters,
 							UBaseType_t uxPriority,
 							TaskHandle_t * const pxCreatedTask ) PRIVILEGED_FUNCTION;
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+	TaskHandle_t xTaskCreateFromSecure(	uint32_t ulTaskId,
+							const uint16_t usStackDepth,
+							UBaseType_t uxPriority ) PRIVILEGED_FUNCTION;
+	BaseType_t xSecureTaskCreate(	TaskFunction_t pxTaskCode,
+							const char * const pcName, 
+							const uint16_t usStackDepth, 
+							const uint16_t usSecureStackDepth,
+							void * const pvParameters, 
+							UBaseType_t uxPriority, 
+							TaskHandle_t * const pxCreatedTask ) PRIVILEGED_FUNCTION; /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
+#endif
 #endif
 
 /**

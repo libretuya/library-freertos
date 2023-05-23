@@ -229,6 +229,12 @@ typedef void (*PendedFunction_t)( void *, uint32_t );
 								const UBaseType_t uxAutoReload,
 								void * const pvTimerID,
 								TimerCallbackFunction_t pxCallbackFunction ) PRIVILEGED_FUNCTION;
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+	TimerHandle_t xTimerCreateFromSecure(	const TickType_t xTimerPeriodInTicks,
+											const UBaseType_t uxAutoReload,
+											void * const pvTimerID,
+											TimerCallbackFunction_t pxCallbackFunction );
+#endif
 #endif
 
 /**
@@ -1262,6 +1268,9 @@ TickType_t xTimerGetExpiryTime( TimerHandle_t xTimer ) PRIVILEGED_FUNCTION;
  */
 BaseType_t xTimerCreateTimerTask( void ) PRIVILEGED_FUNCTION;
 BaseType_t xTimerGenericCommand( TimerHandle_t xTimer, const BaseType_t xCommandID, const TickType_t xOptionalValue, BaseType_t * const pxHigherPriorityTaskWoken, const TickType_t xTicksToWait ) PRIVILEGED_FUNCTION;
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+BaseType_t xTimerGenericCommandFromSecure( uint32_t * params );
+#endif
 
 #if( configUSE_TRACE_FACILITY == 1 )
 	void vTimerSetTimerNumber( TimerHandle_t xTimer, UBaseType_t uxTimerNumber ) PRIVILEGED_FUNCTION;

@@ -274,10 +274,20 @@ typedef struct tskTaskControlBlock
 		xMPU_SETTINGS	xMPUSettings;		/*< The MPU settings are defined as part of the port layer.  THIS MUST BE THE SECOND MEMBER OF THE TCB STRUCT. */
 	#endif
 
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+#if defined(V8M_STKOVF)
+	StackType_t			*pxStack;			/*< Points to the start of the stack. */
+#endif
+#if defined(V8M_SECURE)
+	uint32_t 			ulSecureStackID;	/*< Secure stack id. */
+#endif
+#endif
 	ListItem_t			xStateListItem;	/*< The list that the state list item of a task is reference from denotes the state of that task (Ready, Blocked, Suspended ). */
 	ListItem_t			xEventListItem;		/*< Used to reference a task from an event list. */
 	UBaseType_t			uxPriority;			/*< The priority of the task.  0 is the lowest priority. */
+#if !(defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_STKOVF))
 	StackType_t			*pxStack;			/*< Points to the start of the stack. */
+#endif
 	char				pcTaskName[ configMAX_TASK_NAME_LEN ];/*< Descriptive name given to the task when created.  Facilitates debugging only. */ /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 
 	#if ( ( portSTACK_GROWTH > 0 ) || ( configRECORD_STACK_HIGH_ADDRESS == 1 ) )
@@ -341,6 +351,15 @@ typedef struct tskTaskControlBlock
 /* The old tskTCB name is maintained above then typedefed to the new TCB_t name
 below to enable the use of older kernel aware debuggers. */
 typedef tskTCB TCB_t;
+
+#if defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE)
+/* Secure Stack API */
+extern uint32_t TZ_Init_Stack_S(void);
+extern uint32_t TZ_Alloc_Stack_S(uint32_t module_id, int stackdepth);
+extern uint32_t TZ_Free_Stack_S(uint32_t module_id);
+extern uint32_t TZ_Load_Context_S(uint32_t module_id);
+extern uint32_t TZ_Store_Context_S(uint32_t module_id);
+#endif
 
 /*lint -save -e956 A manual analysis and inspection has been used to determine
 which static variables must be declared volatile. */
@@ -729,12 +748,22 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 
 #if( configSUPPORT_DYNAMIC_ALLOCATION == 1 )
 
+#if defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE)
+	BaseType_t xSecureTaskCreate(	TaskFunction_t pxTaskCode,
+							const char * const pcName,
+							const uint16_t usStackDepth,
+							const uint16_t usSecureStackDepth,
+							void * const pvParameters,
+							UBaseType_t uxPriority,
+							TaskHandle_t * const pxCreatedTask ) /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
+#else
 	BaseType_t xTaskCreate(	TaskFunction_t pxTaskCode,
 							const char * const pcName,		/*lint !e971 Unqualified char types are allowed for strings and single characters only. */
 							const configSTACK_DEPTH_TYPE usStackDepth,
 							void * const pvParameters,
 							UBaseType_t uxPriority,
 							TaskHandle_t * const pxCreatedTask )
+#endif
 	{
 	TCB_t *pxNewTCB;
 	BaseType_t xReturn;
@@ -795,6 +824,11 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 		}
 		#endif /* portSTACK_GROWTH */
 
+		#if defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE)
+		/* alloc Secure stack */
+		pxNewTCB->ulSecureStackID = TZ_Alloc_Stack_S((uint32_t)pxNewTCB, usSecureStackDepth);
+		#endif
+
 		if( pxNewTCB != NULL )
 		{
 			#if( tskSTATIC_AND_DYNAMIC_ALLOCATION_POSSIBLE != 0 ) /*lint !e731 Macro has been consolidated for readability reasons. */
@@ -817,6 +851,40 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB ) PRIVILEGED_FUNCTION;
 		return xReturn;
 	}
 
+#if defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE)
+    extern void vSecureTaskDispatcher(void *);
+    void vSecureTaskPuppet ( void * const pvParamters )
+	{
+        //uint32_t  ulTaskId = (uint32_t)pvParamters;
+        vSecureTaskDispatcher(pvParamters);
+		}
+
+	TaskHandle_t xTaskCreateFromSecure(	uint32_t ulTaskId,
+											const uint16_t usStackDepth,
+											UBaseType_t uxPriority )
+		{
+		TaskHandle_t pxCreatedTask = NULL;
+
+        char taskname[16];
+        sprintf(taskname, "secure%02d", (int)ulTaskId);
+
+		//if(xSecureTaskCreate(vSecureTaskPuppet, taskname, 256, usStackDepth, (void *)ulTaskId, uxPriority, &pxCreatedTask)==pdTRUE)
+        if(xSecureTaskCreate(vSecureTaskDispatcher, taskname, 256, usStackDepth, (void *)ulTaskId, uxPriority, &pxCreatedTask)==pdTRUE)    
+			return pxCreatedTask;
+				else
+			return NULL;
+			}
+
+	BaseType_t xTaskCreate(	TaskFunction_t pxTaskCode,
+							const char * const pcName,
+							const uint16_t usStackDepth,
+							void * const pvParameters,
+							UBaseType_t uxPriority,
+							TaskHandle_t * const pxCreatedTask ) /*lint !e971 Unqualified char types are allowed for strings and single characters only. */
+		{
+		return xSecureTaskCreate(pxTaskCode, pcName, usStackDepth, 0, pvParameters, uxPriority, pxCreatedTask);
+	}
+#endif
 #endif /* configSUPPORT_DYNAMIC_ALLOCATION */
 /*-----------------------------------------------------------*/
 
@@ -1901,6 +1969,10 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB )
 void vTaskStartScheduler( void )
 {
 BaseType_t xReturn;
+#if defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE)
+	/* Init Secure stack */
+	TZ_Init_Stack_S();
+#endif
 
 	/* Add the idle task at the lowest priority. */
 	#if( configSUPPORT_STATIC_ALLOCATION == 1 )
@@ -2116,6 +2188,12 @@ BaseType_t xAlreadyYielded = pdFALSE;
 	removed task will have been added to the xPendingReadyList.  Once the
 	scheduler has been resumed it is safe to move all the pending ready
 	tasks from this list into their appropriate ready list. */
+	UBaseType_t uxSavedInterruptStatus;
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+	if (__get_IPSR() != 0) {
+		uxSavedInterruptStatus = portSET_INTERRUPT_MASK_FROM_ISR();
+	} else
+#endif
 	taskENTER_CRITICAL();
 	{
 		--uxSchedulerSuspended;
@@ -2206,6 +2284,11 @@ BaseType_t xAlreadyYielded = pdFALSE;
 			mtCOVERAGE_TEST_MARKER();
 		}
 	}
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+	if (__get_IPSR() != 0) {
+		portCLEAR_INTERRUPT_MASK_FROM_ISR( uxSavedInterruptStatus );
+	} else
+#endif
 	taskEXIT_CRITICAL();
 
 	return xAlreadyYielded;
@@ -3692,6 +3775,9 @@ static void prvCheckTasksWaitingTermination( void )
 		{
 			/* The task can only have been allocated dynamically - free both
 			the stack and TCB. */
+		#if defined(FREERTOS_PORT_REALTEK_AMBZ2) && defined(V8M_SECURE)
+			TZ_Free_Stack_S(pxTCB->ulSecureStackID);
+		#endif
 			vPortFree( pxTCB->pxStack );
 			vPortFree( pxTCB );
 		}

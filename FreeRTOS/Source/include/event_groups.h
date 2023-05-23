@@ -292,6 +292,9 @@ typedef TickType_t EventBits_t;
  * \ingroup EventGroup
  */
 EventBits_t xEventGroupWaitBits( EventGroupHandle_t xEventGroup, const EventBits_t uxBitsToWaitFor, const BaseType_t xClearOnExit, const BaseType_t xWaitForAllBits, TickType_t xTicksToWait ) PRIVILEGED_FUNCTION;
+#ifdef FREERTOS_PORT_REALTEK_AMBZ2
+EventBits_t xEventGroupWaitBitsFromSecure( uint32_t * params );
+#endif
 
 /**
  * event_groups.h
