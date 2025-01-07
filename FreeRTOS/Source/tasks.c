@@ -306,6 +306,8 @@ typedef struct tskTaskControlBlock
 
 	#if ( portSTACK_GROWTH > 0 )
 		StackType_t		*pxEndOfStack;		/*< Points to the end of the stack on architectures where the stack grows up from low memory. */
+	#elif defined(FREERTOS_PORT_LIGHTNING_LN882H)
+		UBaseType_t     uxSizeOfStack;      /*< Support For CmBacktrace >*/
 	#endif
 
 	#if ( portCRITICAL_NESTING_IN_TCB == 1 )
@@ -4857,5 +4859,27 @@ BaseType_t xTaskIsTaskFinished( xTaskHandle xTask )
     taskEXIT_CRITICAL();
 
     return pdTRUE;
+}
+#endif
+
+#ifdef FREERTOS_PORT_LIGHTNING_LN882H
+/*< Support For CmBacktrace >*/
+uint32_t * vTaskStackAddr()
+{
+	return pxCurrentTCB->pxStack;
+}
+
+uint32_t vTaskStackSize()
+{
+	#if ( portSTACK_GROWTH > 0 )
+	return (pxNewTCB->pxEndOfStack - pxNewTCB->pxStack + 1);
+	#else /* ( portSTACK_GROWTH > 0 )*/
+	return pxCurrentTCB->uxSizeOfStack;
+	#endif /* ( portSTACK_GROWTH > 0 )*/
+}
+
+char * vTaskName()
+{
+	return pxCurrentTCB->pcTaskName;
 }
 #endif
